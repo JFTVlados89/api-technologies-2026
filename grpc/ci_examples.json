@@ -1,0 +1,15 @@
+{
+  "GetItem": [
+    {"id": "item-1"}
+  ],
+  "ListItems": [
+    {"limit": 5}
+  ],
+  "CreateItems": [
+    {"id": "item-2", "name": "Production Plant", "price": 15000000.0},
+    {"id": "item-3", "name": "Warehouse", "price": 50000000.0}
+  ],
+  "ProcessItems": [
+    {"id": "item-4", "name": "Testing Facility", "price": 100000000.0}
+  ]
+}
