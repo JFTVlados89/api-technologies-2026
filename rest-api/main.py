@@ -18,7 +18,10 @@ from typing import Optional
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
-
+from fastapi import Request
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 # --- Модели запросов -------------------------------------------------------
 # Каждое поле описывайте через Field с ограничениями (ge/le, min_length,
@@ -54,9 +57,12 @@ class FacilityResponse(FacilityCreated):
 class ErrorResponse(BaseModel):
     detail: str
 
+limiter = Limiter(key_func=get_remote_address)
 
 app = FastAPI(title="Item Service", version="1.0.0")
 
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # обработка ошибки  
 # «База» данных — словарь в памяти: ключ — facility_id, значение — объект.
 # Базу данных (SQLite и т. п.) не используем.
 facilities: dict[int, FacilityResponse] = {}
@@ -67,6 +73,7 @@ facilities: dict[int, FacilityResponse] = {}
     status_code=201,
     response_model=FacilityCreated,
 )
+@limiter.limit("3/minute")
 async def create_facility(payload: FacilityCreate) -> FacilityCreated:
     new_facility_id = len(facilities) + 1 # создаем уникальный ID объекта
     new_facility = FacilityResponse( # Создаем карточку объекта 
