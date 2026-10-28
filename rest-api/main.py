@@ -18,7 +18,11 @@ from typing import Optional
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
-
+from fastapi import Request
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from fastapi.middleware.cors import CORSMiddleware
 
 # --- Модели запросов -------------------------------------------------------
 # Каждое поле описывайте через Field с ограничениями (ge/le, min_length,
@@ -54,9 +58,17 @@ class FacilityResponse(FacilityCreated):
 class ErrorResponse(BaseModel):
     detail: str
 
+limiter = Limiter(key_func=get_remote_address) # создаем объект лимитера, который делает посчет запросов 
 
 app = FastAPI(title="Item Service", version="1.0.0")
-
+app.state.limiter = limiter  # сохраняем лимитер внутри глобального состояни приложения 
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # обработка ошибки
+app.add_middleware(CORSMiddleware,
+                   allow_origins=["http://localhost", "[http://127.0.0.1](http://127.0.0.1)"],
+                   allow_credentials=True,
+                   allow_methods=["*"],
+                   allow_headers=["*"]
+                   )  
 # «База» данных — словарь в памяти: ключ — facility_id, значение — объект.
 # Базу данных (SQLite и т. п.) не используем.
 facilities: dict[int, FacilityResponse] = {}
@@ -67,7 +79,8 @@ facilities: dict[int, FacilityResponse] = {}
     status_code=201,
     response_model=FacilityCreated,
 )
-async def create_facility(payload: FacilityCreate) -> FacilityCreated:
+@limiter.limit("3/minute")
+async def create_facility(request: Request,payload: FacilityCreate) -> FacilityCreated:
     new_facility_id = len(facilities) + 1 # создаем уникальный ID объекта
     new_facility = FacilityResponse( # Создаем карточку объекта 
         facility_id = new_facility_id, #достаем из payload ID объекта 
@@ -98,7 +111,7 @@ async def get_facility(facility_id: int) -> FacilityResponse:
 )
 async def update_facility(facility_id: int, payload: FacilityUpdate) -> FacilityResponse:
     if facility_id not in facilities: #проверяем на его отсутствие 
-        raise HTTPException(status_code=404, detail="Facility not changeded")
+        raise HTTPException(status_code=404, detail="Facility not found")
     
     if payload.name is not None: #проверяем поле name на is not None 
         facilities[facility_id].name = payload.name #изменяем name
